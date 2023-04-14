@@ -42,14 +42,14 @@ import com.badlogic.gdx.utils.reflect.ReflectionException;
  */
 public class Engine {
 	private static Family empty = Family.all().get();
-	
+
 	private final Listener<Entity> componentAdded = new ComponentListener();
 	private final Listener<Entity> componentRemoved = new ComponentListener();
-	
+
 	private SystemManager systemManager = new SystemManager(new EngineSystemListener());
 	private EntityManager entityManager = new EntityManager(new EngineEntityListener());
 	private ComponentOperationHandler componentOperationHandler = new ComponentOperationHandler(new EngineDelayedInformer());
-	private FamilyManager familyManager = new FamilyManager(entityManager.getEntities());	
+	private FamilyManager familyManager = new FamilyManager(entityManager.getEntities());
 	private boolean updating;
 
 	/**
@@ -89,7 +89,7 @@ public class Engine {
 		boolean delayed = updating || familyManager.notifying();
 		entityManager.removeEntity(entity, delayed);
 	}
-	
+
 	/**
 	 * Removes all entities of the given {@link Family}.
 	 */
@@ -171,7 +171,7 @@ public class Engine {
 		return systemManager.getSystems();
 	}
 
-	/** Returns immutable collection of entities for the specified {@link Family}. 
+	/** Returns immutable collection of entities for the specified {@link Family}.
 	 * Returns the same instance every time for the same Family.
 	 */
 	public ImmutableArray<Entity> getEntitiesFor(Family family){
@@ -229,36 +229,52 @@ public class Engine {
 		if (updating) {
 			throw new IllegalStateException("Cannot call update() on an Engine that is already updating.");
 		}
-		
+
 		updating = true;
 		ImmutableArray<EntitySystem> systems = systemManager.getSystems();
 		try {
 			for (int i = 0; i < systems.size(); ++i) {
 				EntitySystem system = systems.get(i);
-				
+
 				if (system.checkProcessing()) {
-					system.update(deltaTime);
+					updateSystem(system, deltaTime);
 				}
-	
-				while(componentOperationHandler.hasOperationsToProcess() || entityManager.hasPendingOperations()) {
-					componentOperationHandler.processOperations();
-					entityManager.processPendingOperations();
-				}
+
+				processOperations();
 			}
 		}
 		finally {
 			updating = false;
-		}	
+		}
 	}
-	
+
+	/**
+	 * Updates the given system.
+	 * @param system The system to update.
+	 * @param deltaTime The time passed since the last frame.
+	 */
+	protected void updateSystem(EntitySystem system, float deltaTime) {
+		system.update(deltaTime);
+	}
+
+	/**
+	 * Processes all pending operations (add/remove) of entities and components.
+	 */
+	protected void processOperations() {
+		while(componentOperationHandler.hasOperationsToProcess() || entityManager.hasPendingOperations()) {
+			componentOperationHandler.processOperations();
+			entityManager.processPendingOperations();
+		}
+	}
+
 	protected void addEntityInternal(Entity entity) {
 		entity.componentAdded.add(componentAdded);
 		entity.componentRemoved.add(componentRemoved);
 		entity.componentOperationHandler = componentOperationHandler;
-		
+
 		familyManager.updateFamilyMembership(entity);
 	}
-	
+
 	protected void removeEntityInternal(Entity entity) {
 		familyManager.updateFamilyMembership(entity);
 
@@ -266,14 +282,14 @@ public class Engine {
 		entity.componentRemoved.remove(componentRemoved);
 		entity.componentOperationHandler = null;
 	}
-	
+
 	private class ComponentListener implements Listener<Entity> {
 		@Override
 		public void receive(Signal<Entity> signal, Entity object) {
 			familyManager.updateFamilyMembership(object);
 		}
 	}
-	
+
 	private class EngineSystemListener implements SystemListener {
 		@Override
 		public void systemAdded (EntitySystem system) {
@@ -285,7 +301,7 @@ public class Engine {
 			system.removedFromEngineInternal(Engine.this);
 		}
 	}
-	
+
 	private class EngineEntityListener implements EntityListener {
 		@Override
 		public void entityAdded (Entity entity) {
@@ -297,7 +313,7 @@ public class Engine {
 			removeEntityInternal(entity);
 		}
 	}
-	
+
 	private class EngineDelayedInformer implements BooleanInformer {
 		@Override
 		public boolean value () {
